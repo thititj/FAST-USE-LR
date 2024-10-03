@@ -1,3 +1,6 @@
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"  # Disable GPU usage for TensorFlow
+
 import tensorflow_hub as hub
 import tensorflow as tf
 import numpy as np
@@ -6,7 +9,9 @@ from pydantic import BaseModel
 import pickle
 from typing import Dict, List
 import uvicorn
-from contextlib import asynccontextmanager
+
+# Initialize FastAPI app
+app = FastAPI(title="Text Classification API")
 
 # Define request model
 class TextRequest(BaseModel):
@@ -17,14 +22,9 @@ class PredictionResponse(BaseModel):
     predicted_label: str
     class_probabilities: Dict[str, float]
 
-# Helper function to get embeddings
-def get_embeddings(texts: List[str]) -> np.ndarray:
-    embeddings = use_model(texts)
-    return embeddings.numpy()
-
-# Initialize the FastAPI app with lifespan handler
-@asynccontextmanager
-async def lifespan(app: FastAPI):
+# Load Universal Sentence Encoder and Logistic Regression model
+@app.on_event("startup")
+async def load_models():
     global use_model, lr_model
     
     # Load Universal Sentence Encoder
@@ -33,11 +33,11 @@ async def lifespan(app: FastAPI):
     # Load your pre-trained logistic regression model and label encoder
     with open('lr_model.pkl', 'rb') as f:
         lr_model = pickle.load(f)
-    
-    # Yield control back to the application
-    yield
 
-app = FastAPI(title="Text Classification API", lifespan=lifespan)
+# Helper function to get embeddings
+def get_embeddings(texts: List[str]) -> np.ndarray:
+    embeddings = use_model(texts)
+    return embeddings.numpy()
 
 # Prediction endpoint
 @app.post("/predict", response_model=PredictionResponse)
@@ -62,4 +62,3 @@ async def predict(request: TextRequest):
         predicted_label=predicted_label,
         class_probabilities=class_probs
     )
-
